@@ -1,111 +1,169 @@
-import streamlit as st
-import pandas as pd
+ import streamlit as st
 import os
+import pandas as pd
 from openpyxl import Workbook, load_workbook
 
-st.title("🎓 Student Registration System")
+st.title("🎓 Student Name Correction System")
 
 # =========================
-# 📁 FILE
+# 📌 SCHOOL LIST
 # =========================
-FILE = "students.xlsx"
+schools = [
+    "YAWBRONYA JHS",
+    "Prempeh",
+    "Yawbronya Presby School",
+    "Yaa Asantewaa Girls"
+]
 
 # =========================
-# 📌 DATA
+# 📌 SHEETS
 # =========================
-schools = ["KNUST SHS", "Prempeh College", "Opoku Ware School", "Yaa Asantewaa Girls"]
-classes = ["KG1", "KG2", "P1", "P2", "P3", "P4", "P5", "P6", "JHS 1", "JHS 2", "JHS 3"]
+sheets = [
+    "KG1 SBA", "KG2 SBA",
+    "P1 SBA", "P2 SBA", "P3 SBA", "P4 SBA",
+    "P5 SBA", "P6 SBA",
+    "JHS 1 SBA", "JHS 2 SBA", "JHS 3 SBA"
+]
 
 # =========================
-# 📁 CREATE FILE (SAFE FIX)
+# 🔽 SELECT SCHOOL & SHEET
 # =========================
-if not os.path.exists(FILE):
+school = st.selectbox("Select School", schools)
+sheet_name = st.selectbox("Select Class Sheet", sheets)
+
+# =========================
+# 📂 FILE NAME
+# =========================
+school_file = school.replace(" ", "_").lower() + ".xlsx"
+
+# =========================
+# 📁 CREATE FILE IF NOT EXISTS
+# =========================
+if not os.path.exists(school_file):
     wb = Workbook()
-    ws = wb.active
-    ws.title = "Init"   # ✅ keep at least one sheet
-    wb.save(FILE)
+    wb.remove(wb.active)
+
+    for s in sheets:
+        ws = wb.create_sheet(title=s)
+        ws.append(["Name"])
+
+    wb.save(school_file)
 
 # =========================
-# 📄 FUNCTION: GET SHEET
+# 📄 LOAD WORKBOOK & ENSURE SHEET
 # =========================
-def get_sheet(school):
-    wb = load_workbook(FILE)
+wb = load_workbook(school_file)
 
-    # Create sheet if missing
-    if school not in wb.sheetnames:
-        ws = wb.create_sheet(title=school)
-        ws.append(["Name", "Class"])
-        wb.save(FILE)
-        wb = load_workbook(FILE)
+if sheet_name not in wb.sheetnames:
+    ws = wb.create_sheet(title=sheet_name)
+    ws.append(["Name"])
+    wb.save(school_file)
 
-    # Remove Init sheet if not needed
-    if "Init" in wb.sheetnames and len(wb.sheetnames) > 1:
-        std = wb["Init"]
-        wb.remove(std)
-        wb.save(FILE)
-        wb = load_workbook(FILE)
+# Load dataframe
+df = pd.read_excel(school_file, sheet_name=sheet_name)
 
-    return wb, wb[school]
+if "Name" not in df.columns:
+    df["Name"] = []
 
 # =========================
-# 🧾 FORM
+# 🔽 SELECT NAME
 # =========================
-with st.form("student_form"):
-    st.subheader("➕ Add Student")
+name_list = df["Name"].dropna().tolist()
 
-    name = st.text_input("Student Name")
-    school = st.selectbox("Select School", schools)
-    student_class = st.selectbox("Select Class", classes)
-
-    submit = st.form_submit_button("Save Student")
+selected_name = st.selectbox(
+    "Select Student Name",
+    name_list if name_list else ["No names available"]
+)
 
 # =========================
-# 💾 SAVE
+# ✏️ UPDATE NAME
 # =========================
-if submit:
-    if name.strip() == "":
-        st.warning("⚠️ Enter a valid name")
+st.subheader("✏️ Update Student Name")
+
+new_name = st.text_input("Enter Correct Name", key="update_name")
+
+if st.button("Update Name"):
+    if selected_name == "No names available":
+        st.warning("No names to update")
+
+    elif new_name.strip() == "":
+        st.warning("Enter a valid name")
+
+    elif new_name in name_list:
+        st.warning("Name already exists")
 
     else:
-        wb, ws = get_sheet(school)
+        ws = wb[sheet_name]
+        updated = False
 
-        # Load existing data
-        try:
-            df = pd.read_excel(FILE, sheet_name=school)
-        except:
-            df = pd.DataFrame(columns=["Name", "Class"])
+        for row in ws.iter_rows(min_row=2):
+            if row[0].value == selected_name:
+                row[0].value = new_name
+                updated = True
+                break
 
-        # Prevent duplicates
-        if name.strip() in df["Name"].astype(str).tolist():
-            st.warning("⚠️ Student already exists")
+        wb.save(school_file)
 
+        if updated:
+            st.success(f"✅ Updated '{selected_name}' to '{new_name}'")
         else:
-            ws.append([name.strip(), student_class])
-            wb.save(FILE)
-
-            st.success(f"✅ {name} added to {school}")
-            st.rerun()
+            st.error("Name not found")
 
 # =========================
-# 📊 VIEW DATA
+# ➕ ADD NEW STUDENT
 # =========================
-st.subheader("📊 View Students")
+st.subheader("➕ Add New Student")
 
-view_school = st.selectbox("Select School to View", schools, key="viewer")
+new_student = st.text_input("Enter New Student Name", key="add_name")
 
-try:
-    df = pd.read_excel(FILE, sheet_name=view_school)
-    st.dataframe(df, use_container_width=True)
-except:
-    st.info("No students yet")
+if st.button("Add Student"):
+    if new_student.strip() == "":
+        st.warning("Enter a valid name")
+
+    elif new_student in name_list:
+        st.warning("Student already exists")
+
+    else:
+        ws = wb[sheet_name]
+        ws.append([new_student])
+        wb.save(school_file)
+
+        st.success(f"✅ {new_student} added successfully")
 
 # =========================
-# 📥 DOWNLOAD
+# 🗑️ DELETE STUDENT
 # =========================
-with open(FILE, "rb") as f:
-    st.download_button("📥 Download Excel File", f, file_name=FILE)
+st.subheader("🗑️ Delete Student")
+
+if st.button("Delete Selected Student"):
+    if selected_name == "No names available":
+        st.warning("No student to delete")
+
+    else:
+        ws = wb[sheet_name]
+        deleted = False
+
+        for row in ws.iter_rows(min_row=2):
+            if row[0].value == selected_name:
+                ws.delete_rows(row[0].row)
+                deleted = True
+                break
+
+        wb.save(school_file)
+
+        if deleted:
+            st.success(f"🗑️ '{selected_name}' deleted successfully")
+        else:
+            st.error("Student not found")
 
 # =========================
-# 📁 SHOW FILE PATH
+# 📥 DOWNLOAD FILE
 # =========================
-st.write("📁 File location:", os.path.abspath(FILE))
+st.subheader("📥 Download File")
+
+with open(school_file, "rb") as file:
+    st.download_button(
+        "Download Updated Excel",
+        data=file,
+        file_name=school_file
+    )
