@@ -1,0 +1,111 @@
+import streamlit as st
+import pandas as pd
+import os
+from openpyxl import Workbook, load_workbook
+
+st.title("🎓 Student Registration System")
+
+# =========================
+# 📁 FILE
+# =========================
+FILE = "students.xlsx"
+
+# =========================
+# 📌 DATA
+# =========================
+schools = ["KNUST SHS", "Prempeh College", "Opoku Ware School", "Yaa Asantewaa Girls"]
+classes = ["KG1", "KG2", "P1", "P2", "P3", "P4", "P5", "P6", "JHS 1", "JHS 2", "JHS 3"]
+
+# =========================
+# 📁 CREATE FILE (SAFE FIX)
+# =========================
+if not os.path.exists(FILE):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Init"   # ✅ keep at least one sheet
+    wb.save(FILE)
+
+# =========================
+# 📄 FUNCTION: GET SHEET
+# =========================
+def get_sheet(school):
+    wb = load_workbook(FILE)
+
+    # Create sheet if missing
+    if school not in wb.sheetnames:
+        ws = wb.create_sheet(title=school)
+        ws.append(["Name", "Class"])
+        wb.save(FILE)
+        wb = load_workbook(FILE)
+
+    # Remove Init sheet if not needed
+    if "Init" in wb.sheetnames and len(wb.sheetnames) > 1:
+        std = wb["Init"]
+        wb.remove(std)
+        wb.save(FILE)
+        wb = load_workbook(FILE)
+
+    return wb, wb[school]
+
+# =========================
+# 🧾 FORM
+# =========================
+with st.form("student_form"):
+    st.subheader("➕ Add Student")
+
+    name = st.text_input("Student Name")
+    school = st.selectbox("Select School", schools)
+    student_class = st.selectbox("Select Class", classes)
+
+    submit = st.form_submit_button("Save Student")
+
+# =========================
+# 💾 SAVE
+# =========================
+if submit:
+    if name.strip() == "":
+        st.warning("⚠️ Enter a valid name")
+
+    else:
+        wb, ws = get_sheet(school)
+
+        # Load existing data
+        try:
+            df = pd.read_excel(FILE, sheet_name=school)
+        except:
+            df = pd.DataFrame(columns=["Name", "Class"])
+
+        # Prevent duplicates
+        if name.strip() in df["Name"].astype(str).tolist():
+            st.warning("⚠️ Student already exists")
+
+        else:
+            ws.append([name.strip(), student_class])
+            wb.save(FILE)
+
+            st.success(f"✅ {name} added to {school}")
+            st.rerun()
+
+# =========================
+# 📊 VIEW DATA
+# =========================
+st.subheader("📊 View Students")
+
+view_school = st.selectbox("Select School to View", schools, key="viewer")
+
+try:
+    df = pd.read_excel(FILE, sheet_name=view_school)
+    st.dataframe(df, use_container_width=True)
+except:
+    st.info("No students yet")
+
+# =========================
+# 📥 DOWNLOAD
+# =========================
+with open(FILE, "rb") as f:
+    st.download_button("📥 Download Excel File", f, file_name=FILE)
+
+# =========================
+# 📁 SHOW FILE PATH
+# =========================
+st.write("📁 File location:", os.path.abspath(FILE))
